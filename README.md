@@ -165,6 +165,8 @@ babel.config.js是在babel第7版引入的，主要是为了解决babel6中的�
 - .babelrc的配置不能应用在使用符号链接引用进来的文件
 - 在node_modules中的.babelrc会被检测到，即使它们中的插件和预设通常没有安装，也可能在Babel编译文件的版本中无效
 
+### 3.1 .babelrc在monorepo项目中的一些问题
+
 另外如果只使用.babelrc，在monorepo项目中会遇到一些问题，这得从.babelrc加载的两条规则有关
 
 - 在向上搜索配置的过程中，一旦在文件夹中找到了package.json，就会停止搜寻其它配置（babel用package.json文件来划定package的范围）
@@ -200,7 +202,54 @@ npx babel ./config/mod1/index.js -o ./config/mod1/index.t.js
 
   正是基于上述的一些问题，babel在7.0.0之后，引入了`babel.config.[json/js/mjs/cjs]`，基于babel.config.json的配置会灵活得多。
 
-  
+### 3.2 [Project-wide configuration](https://babeljs.io/docs/en/config-files#project-wide-configuration)
+
+  一般`babel.config.json`会放置在根目录下，在执行编译时，babel会首先去寻找`babel.config.json`文件，以此来作为整个项目的根配置。
+
+  如果在子目录中不存在.babelrc的配置，那么在编译时，会根据根目录下的配置来进行编译，比如在config/index.js中添加如下代码  ![babel-config-1](./screenshots/babel-config-1.png)
+
+  执行`npx babel ./config/index -o ./config/index.t.js`后会发现`for..of`这段代码会被原样输出，因为在config目录中并没有针对`for..of`配置插件。现在在config文件中添加`.babelrc`，内容如下：
+
+  ```json
+  {
+    "plugins": [
+      "@babel/plugin-transform-for-of"
+    ]
+  }
+  ```
+
+  再次执行完，会发现，`for..of`会被babel编译
+
+![babel-config-2](./screenshots/babel-config-2.png)
+
+说明，如果子文件夹中存在相应的babel配置，那么编译项会在根配置上进行扩展。
+
+但这点在`monorepo`项目中会有点例外，之前我在mod1文件家中放置了一个`package.json`文件：
+
+![babel-config-3](./screenshots/babel-config-3.png)
+
+执行下面命令
+
+```shell
+npx babel ./config/mod1/index.js -o ./config/mod1/index.t.js
+```
+
+发现`for..of`部分并没有被babel编译，这个原因和之前在讲bablerc的原因是一样的，因为执行的根目录是src，因此在mod1中并不能去加载.babelrc配置，因此只根据根目录中的配置来执行编译。想要mod1中的配置也被加载，可以按照相同的方法在`babel.config.json`中配置`babelrcRoots`。
+
+另外如果子文件家中不存在相应的配置，比如在cli目录下，在src目录下执行config/index.js文件是没有问题的，但是如果进入cli中，然后直接执行，会发现index.js文件不会被编译。由此，你需要告诉babel去找到这个配置，这里可以使用`rootMode: upward`来使babel向上查找babel.config.json，并以此作为根目录。
+
+```shell
+cd cli & npx babel ./index.js -o ./index.t.js --root-mode upward
+```
+
+### 3.3 推荐使用场景
+
+- babel.config.json 
+  - 你正在使用一个`monorepo`（可以理解为在一个项目中会有多个子工程）
+  - 你希望编译node_modules以及symobllinked-project中的代码
+- .babelrc
+  - 你的配置仅适用于项目的单个部分
+- **综合推荐使用babel.config.json，[Babel itself is using it](https://github.com/babel/babel/blob/master/babel.config.js)**。
 
 ## 参考链接
 

@@ -2,5 +2,9 @@
   "babelrcRoots": [
     ".",
     "config/mod1"
+  ],
+  "plugins": [
+    "@babel/plugin-transform-arrow-functions",
+    "@babel/plugin-transform-parameters"
   ]
 }
