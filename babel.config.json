@@ -1,0 +1,6 @@
+{
+  "babelrcRoots": [
+    ".",
+    "config/mod1"
+  ]
+}
