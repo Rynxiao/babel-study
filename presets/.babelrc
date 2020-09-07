@@ -1,0 +1,6 @@
+{
+  "presets": [
+    "./my-preset-1",
+    "./my-preset-2"
+  ]
+}

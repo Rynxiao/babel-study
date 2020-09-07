@@ -124,3 +124,5 @@ dist
 *.iml
 out
 gen
+
+*.t.js

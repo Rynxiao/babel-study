@@ -323,6 +323,8 @@ presets的中文翻译为预设，即为一组插件列表的集合，我们可�
 - 插件会按照声明的插件列表顺序顺序执行(first to last)
 - preset会按照声明的列表顺序逆序执行(last to first)
 
+#### 4.3.1 plugin的执行顺序测试
+
 下面我们来做几个例子测试一下，首先，官方给出的插件标准写法如下**[再次之前，强烈建议阅读[babel-handbook](https://github.com/thejameskyle/babel-handbook)来了解接下来插件编码中的一些概念]**：
 
 ```javascript
@@ -397,6 +399,82 @@ npx babel ./plugins/index.js -o ./plugins/index.t.js
 ![babel-plugin-2](./screenshots/babel-plugin-2.png)
 
 可以看到，排在插件列表之前的插件会在提前执行。
+
+#### 4.3.2 preset的执行顺序测试
+
+下面再新建一个插件，用于自定义的preset编写
+
+```javascript
+// presets/babel-plugin-word-replace.js
+// 这个插件主要的功能是给每个节点类型为Identifier的名称拼接一个_replace的后缀
+module.exports = function() {
+  console.log("word-replace plugin will be executed firstly");
+  return {
+    visitor: {
+      Identifier(path) {
+        let name = path.node.name;
+        path.node.name = name += '_replace';
+      },
+    },
+  };
+}
+```
+
+然后我们借助之前编写的`babel-plugin-word-reverse`来编写两个新的presets
+
+```javascript
+// presets/my-preset-1.js
+module.exports = () => {
+  console.log('preset 1 will be executed lastly');
+  return {
+    plugins: ['../plugins/babel-plugin-word-reverse']
+  };
+};
+
+// presets/my-preset-2.js
+module.exports = () => {
+  console.log('preset 2 will be executed firstly');
+  return {
+    presets: ["@babel/preset-react"],
+    plugins: ['./babel-plugin-word-replace', '@babel/plugin-transform-modules-commonjs'],
+  };
+};
+
+// 创建.babelrc配置
+// presets/.babelrc
+{
+  "presets": [
+    "./my-preset-1",
+    "./my-preset-2"
+  ]
+}
+
+// 测试代码
+// presets/index.jsx
+import React from 'react';
+
+export default () => {
+  const text = 'hello world';
+  return <div>{text}</div>;
+}
+
+// 执行
+npx babel ./presets/index.jsx -o ./presets/index.t.js
+```
+
+可以看到在.babelrc中，将preset-1放在了preset-2的前面，如果按照babel官网给出的解析，那么preset2会被先执行，执行的顺序如下
+
+![babel-preset-1](./screenshots/babel-preset-1.png)
+
+可以看到控制台打印的顺序尽然是顺序执行的，这点与**官网给出的preset执行顺序是相反的？？？**
+
+然后再看编译之后生成的文件，发现竟然又是先执行了preset-2中的插件，然后在执行preset-1中的插件，如图：
+
+![babel-preset-2](./screenshots/babel-preset-2.png)
+
+可以看到显然是首先经过了添加后缀`_replace`，然后在进行了整体的`reverse`。这里是不是意味着，在presets列表中后声明的preset中的插件会先执行呢？？？
+
+
 
 ## 参考链接
 
