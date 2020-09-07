@@ -249,10 +249,158 @@ cd cli & npx babel ./index.js -o ./index.t.js --root-mode upward
   - 你希望编译node_modules以及symobllinked-project中的代码
 - .babelrc
   - 你的配置仅适用于项目的单个部分
-- **综合推荐使用babel.config.json，[Babel itself is using it](https://github.com/babel/babel/blob/master/babel.config.js)**。
+  - 需要在子目录/文件中运行一些特定的转换，比如你可能不希望一些第三方库被转码
+- **综合推荐使用babel.config.json，[Babel itself is using it](https://github.com/babel/babel/blob/master/babel.config.js)**
+
+## 4. [plugins](https://babeljs.io/docs/en/plugins) & [Presets](https://babeljs.io/docs/en/presets)
+
+> Babel is a compiler (source code => output code). Like many other compilers it runs in 3 stages: **parsing**, **transforming**, and **printing**.
+>
+> Now, out of the box Babel doesn't do anything. It basically acts like `const babel = code => code;` by parsing the code and then generating the same code back out again. You will need to add plugins for Babel to do anything.
+
+没有plugins，babel将啥事也做不了。
+
+babel提供了丰富的插件来对不同时期的代码进行转换。例如我们在es6最常使用的箭头函数，当需要转化为es5版本时，就用到了[arrow-functions](https://babeljs.io/docs/en/babel-plugin-transform-arrow-functions)这个插件。
+
+具体的插件列表，可以查看[plugins](https://babeljs.io/docs/en/plugins)。
+
+presets的中文翻译为预设，即为一组插件列表的集合，我们可以不必再当独地一个一个地去添加我们需要的插件。比如我们希望使用es6的所有特性，我们可以使用babel提供的[ES2015](https://babeljs.io/docs/en/plugins#es2015)这个预设。
+
+### 4.1 基本用法
+
+```json
+// 如果plugin已经在发布到npm中
+// npm install @babel/plugin-transform-arrow-functions -D
+// npm install @babel/preset-react -D
+{
+  "plugins": ["@babel/plugin-transform-arrow-functions"],
+  "presets": ["@babel/preset-react"]
+}
+
+// 或者按照babel的规范，引入自己编写的plugin/preset
+{
+  "plugins": ["path/to/your/plugin"],
+  "presets": ["path/to/your/preset"],
+}
+```
+
+### 4.2 选项
+
+任何一个插件都可以拥有自定义的属性来定义这个插件的行为。具体的写法可以为：
+
+```json
+{
+  "plugins": ["pluginA", ["pluginA"], ["pluginA", {}]],
+  "presets": ["presetA", ["presetA"], ["presetA", {}]]
+}
+
+// example
+{
+  "plugins": [
+    [
+      "@babel/plugin-transform-arrow-functions",
+      { "spec": true }
+    ]
+  ],
+  "presets": [
+    [
+      "@babel/preset-react",
+      {
+        "pragma": "dom", // default pragma is React.createElement (only in classic runtime)
+        "pragmaFrag": "DomFrag", // default is React.Fragment (only in classic runtime)
+        "throwIfNamespace": false, // defaults to true
+        "runtime": "classic" // defaults to classic
+        // "importSource": "custom-jsx-library" // defaults to react (only in automatic runtime)
+      }
+    ]
+  ]
+}
+```
+
+### 4.3 执行顺序
+
+- 插件执行顺序在[presets](https://babeljs.io/docs/en/presets)之前
+- 插件会按照声明的插件列表顺序顺序执行(first to last)
+- preset会按照声明的列表顺序逆序执行(last to first)
+
+下面我们来做几个例子测试一下，首先，官方给出的插件标准写法如下**[再次之前，强烈建议阅读[babel-handbook](https://github.com/thejameskyle/babel-handbook)来了解接下来插件编码中的一些概念]**：
+
+```javascript
+// 1. babel使用babylon将接受到的代码进行解析，得到ast树，得到一系列的令牌流，例如Identifier就代表一个字
+// 符(串)的令牌
+// 2. 然后使用babel-traverse对ast树中的节点进行遍历，对应于插件中的vistor，每遍历一个特定的节点，就会给visitor添加一个标记
+// 3. 使用babel-generator对修改过后的ast树重新生成代码
+
+// 下面的这个插件的主要功能是将字符串进行反转
+// plugins/babel-plugin-word-reverse.js
+module.exports = function() {
+  console.log("word-reverse plugin will be executed firstly");
+  return {
+    visitor: {
+      Identifier(path) {
+        const name = path.node.name;
+        path.node.name = name
+          .split("")
+          .reverse()
+          .join("");
+      },
+    },
+  };
+}
+
+// 然后我们再提供一个插件，这个插件主要是修改函数的返回值
+// plugins/babel-plugin-replace-return.js
+module.exports = function({ types: t }) {
+  console.log("replace-return plugin will be executed lastly");
+  return {
+    visitor: {
+      ReturnStatement(path) {
+        path.replaceWithMultiple([
+         t.expressionStatement(t.stringLiteral('Is this the real life?')),
+         t.expressionStatement(t.stringLiteral('Is this just fantasy?')),
+         t.expressionStatement(t.stringLiteral('(Enjoy singing the rest of the song in your head)')),
+       ]);
+      },
+    },
+  };
+}
+```
+
+首先我们来测试一下原始代码是否通过我们自定义的插件进行转换了，源代码如下：
+
+```javascript
+// plugins/index.js
+const myPluginTest = (javascript) => {
+  return 'I love Javascript';
+}
+
+// 然后在plugins目录下创建一个.babelrc文件，用于继承默认的babel.config.json文件
+// plugins/.babelrc
+{
+  "plugins": ["./babel-plugin-word-reverse", "./babel-plugin-replace-return"]
+}
+
+// usage
+npx babel ./plugins/index.js -o ./plugins/index.t.js
+```
+
+以下是执行完之后的结果
+
+![babel-plugin-1](./screenshots/babel-plugin-1.png)
+
+
+
+从截图可以看出，字符串被反转了，以及返回的字符串也被替换掉了。
+
+然后我们再来看看执行的顺序
+
+![babel-plugin-2](./screenshots/babel-plugin-2.png)
+
+可以看到，排在插件列表之前的插件会在提前执行。
 
 ## 参考链接
 
+- [babeljs.io](https://babeljs.io/docs/en/)
 - [babel详解（七）-配置文件](https://blog.liuyunzhuge.com/2019/09/09/babel详解（七）-配置文件/)
 - [Babel快速上手使用指南](https://juejin.im/post/6844903858632654856)
 
