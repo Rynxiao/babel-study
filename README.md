@@ -325,7 +325,7 @@ presets的中文翻译为预设，即为一组插件列表的集合，我们可�
 
 #### 4.3.1 plugin的执行顺序测试
 
-下面我们来做几个例子测试一下，首先，官方给出的插件标准写法如下**(再次之前，强烈建议阅读[babel-handbook](https://github.com/thejameskyle/babel-handbook)来了解接下来插件编码中的一些概念)**：
+下面我们来做几个例子测试一下，首先，官方给出的插件标准写法如下(**在此之前，强烈建议阅读[babel-handbook](https://github.com/thejameskyle/babel-handbook)来了解接下来插件编码中的一些概念**)：
 
 ```javascript
 // 1. babel使用babylon将接受到的代码进行解析，得到ast树，得到一系列的令牌流，例如Identifier就代表一个字
@@ -503,59 +503,60 @@ export default gensync<[any], ResolvedConfig | null>(function* loadFullConfig(
 
 	// ...
 	const ignored = yield* (function* recurseDescriptors(config, pass) {
-      const plugins: Array<Plugin> = [];
-      for (let i = 0; i < config.plugins.length; i++) {
-        const descriptor = config.plugins[i];
-        if (descriptor.options !== false) {
-          try {
-            plugins.push(yield* loadPluginDescriptor(descriptor, context));
-          } catch (e) {
-            // ...
-          }
-        }
-      }
-
-      const presets: Array<{|
-        preset: ConfigChain | null,
-        pass: Array<Plugin>,
-      |}> = [];
-      for (let i = 0; i < config.presets.length; i++) {
-        const descriptor = config.presets[i];
-        if (descriptor.options !== false) {
-          try {
-            presets.push({
-              preset: yield* loadPresetDescriptor(descriptor, context),
-              pass: descriptor.ownPass ? [] : pass,
-            });
-          } catch (e) {
-            // ...
-          }
-        }
-      }
-
-      // resolve presets
-      if (presets.length > 0) {
-        // ...
-        
-        for (const { preset, pass } of presets) {
-          if (!preset) return true;
-
-          const ignored = yield* recurseDescriptors(
-            {
-              plugins: preset.plugins,
-              presets: preset.presets,
-            },
-            pass,
-          );
+    const plugins: Array<Plugin> = [];
+    for (let i = 0; i < config.plugins.length; i++) {
+      const descriptor = config.plugins[i];
+      if (descriptor.options !== false) {
+        try {
+          plugins.push(yield* loadPluginDescriptor(descriptor, context));
+        } catch (e) {
           // ...
         }
       }
+    }
 
-      // resolve plugins
-      if (plugins.length > 0) {
-        pass.unshift(...plugins);
+    const presets: Array<{|
+      preset: ConfigChain | null,
+      pass: Array<Plugin>,
+    |}> = [];
+    for (let i = 0; i < config.presets.length; i++) {
+      const descriptor = config.presets[i];
+      if (descriptor.options !== false) {
+        try {
+          presets.push({
+            preset: yield* loadPresetDescriptor(descriptor, context),
+            pass: descriptor.ownPass ? [] : pass,
+          });
+        } catch (e) {
+          // ...
+        }
       }
-    })
+    }
+
+    // resolve presets
+    if (presets.length > 0) {
+      // ...
+
+      for (const { preset, pass } of presets) {
+        if (!preset) return true;
+
+        const ignored = yield* recurseDescriptors(
+          {
+            plugins: preset.plugins,
+            presets: preset.presets,
+          },
+          pass,
+        );
+        // ...
+      }
+    }
+
+    // resolve plugins
+    if (plugins.length > 0) {
+      pass.unshift(...plugins);
+    }
+  })(//...)
+}
 ```
 
 `loadPrivatePartialConfig`中会依次执行我们定义的plugins以及presets，这也是为什么在上面的例子中preset1会打印在preset2。
