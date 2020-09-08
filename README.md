@@ -325,7 +325,7 @@ presets的中文翻译为预设，即为一组插件列表的集合，我们可�
 
 #### 4.3.1 plugin的执行顺序测试
 
-下面我们来做几个例子测试一下，首先，官方给出的插件标准写法如下**[再次之前，强烈建议阅读[babel-handbook](https://github.com/thejameskyle/babel-handbook)来了解接下来插件编码中的一些概念]**：
+下面我们来做几个例子测试一下，首先，官方给出的插件标准写法如下**(再次之前，强烈建议阅读[babel-handbook](https://github.com/thejameskyle/babel-handbook)来了解接下来插件编码中的一些概念)**：
 
 ```javascript
 // 1. babel使用babylon将接受到的代码进行解析，得到ast树，得到一系列的令牌流，例如Identifier就代表一个字
@@ -336,10 +336,10 @@ presets的中文翻译为预设，即为一组插件列表的集合，我们可�
 // 下面的这个插件的主要功能是将字符串进行反转
 // plugins/babel-plugin-word-reverse.js
 module.exports = function() {
-  console.log("word-reverse plugin will be executed firstly");
   return {
     visitor: {
       Identifier(path) {
+        console.log("word-reverse plugin come in!!!");
         const name = path.node.name;
         path.node.name = name
           .split("")
@@ -353,10 +353,10 @@ module.exports = function() {
 // 然后我们再提供一个插件，这个插件主要是修改函数的返回值
 // plugins/babel-plugin-replace-return.js
 module.exports = function({ types: t }) {
-  console.log("replace-return plugin will be executed lastly");
   return {
     visitor: {
       ReturnStatement(path) {
+        console.log("replace-return plugin come in!!!");
         path.replaceWithMultiple([
          t.expressionStatement(t.stringLiteral('Is this the real life?')),
          t.expressionStatement(t.stringLiteral('Is this just fantasy?')),
@@ -425,7 +425,7 @@ module.exports = function() {
 ```javascript
 // presets/my-preset-1.js
 module.exports = () => {
-  console.log('preset 1 will be executed lastly');
+  console.log('preset 1 is executed!!!');
   return {
     plugins: ['../plugins/babel-plugin-word-reverse']
   };
@@ -433,7 +433,7 @@ module.exports = () => {
 
 // presets/my-preset-2.js
 module.exports = () => {
-  console.log('preset 2 will be executed firstly');
+  console.log('preset 2 is executed!!!');
   return {
     presets: ["@babel/preset-react"],
     plugins: ['./babel-plugin-word-replace', '@babel/plugin-transform-modules-commonjs'],
@@ -466,7 +466,7 @@ npx babel ./presets/index.jsx -o ./presets/index.t.js
 
 ![babel-preset-1](./screenshots/babel-preset-1.png)
 
-可以看到控制台打印的顺序尽然是顺序执行的，这点与**官网给出的preset执行顺序是相反的？？？**
+可以看到控制台打印的顺序是preset1 -> preset2，这点与**官网给出的preset执行顺序是相反的？？？**
 
 然后再看编译之后生成的文件，发现竟然又是先执行了preset-2中的插件，然后在执行preset-1中的插件，如图：
 
@@ -474,7 +474,126 @@ npx babel ./presets/index.jsx -o ./presets/index.t.js
 
 可以看到显然是首先经过了添加后缀`_replace`，然后在进行了整体的`reverse`。这里是不是意味着，在presets列表中后声明的preset中的插件会先执行呢？？？
 
+怀着这个问题，去啃了下源代码。**发现babel所说的执行顺序，其实是`traverse`访问插件中`vistor`的顺序**。因为presets其实也是一组插件的集合，经过程序处理之后，会使得presets末尾的plugins会出现在整个plugins列表的前面。
 
+同时可以看图中控制台的打印结果，`word-replace`始终会在`word-reverse`之前，并且是成对出现的。
+
+```javascript
+// babel/packages/babel-core/src/transform.js [line 21]
+
+const transformRunner = gensync<[string, ?InputOptions], FileResult | null>(
+  function* transform(code, opts) {
+    const config: ResolvedConfig | null = yield* loadConfig(opts);
+    if (config === null) return null;
+
+    return yield* run(config, code);
+  },
+);
+```
+
+`loadConfig(opts)`会被传递进来的plugins以及presets进行处理，进去看看发生了什么？
+
+```javascript
+// babel/packages/babel-core/src/config/full.js [line 59]
+
+export default gensync<[any], ResolvedConfig | null>(function* loadFullConfig(
+  inputOpts: mixed,
+): Handler<ResolvedConfig | null> {
+  const result = yield* loadPrivatePartialConfig(inputOpts);
+
+	// ...
+	const ignored = yield* (function* recurseDescriptors(config, pass) {
+      const plugins: Array<Plugin> = [];
+      for (let i = 0; i < config.plugins.length; i++) {
+        const descriptor = config.plugins[i];
+        if (descriptor.options !== false) {
+          try {
+            plugins.push(yield* loadPluginDescriptor(descriptor, context));
+          } catch (e) {
+            // ...
+          }
+        }
+      }
+
+      const presets: Array<{|
+        preset: ConfigChain | null,
+        pass: Array<Plugin>,
+      |}> = [];
+      for (let i = 0; i < config.presets.length; i++) {
+        const descriptor = config.presets[i];
+        if (descriptor.options !== false) {
+          try {
+            presets.push({
+              preset: yield* loadPresetDescriptor(descriptor, context),
+              pass: descriptor.ownPass ? [] : pass,
+            });
+          } catch (e) {
+            // ...
+          }
+        }
+      }
+
+      // resolve presets
+      if (presets.length > 0) {
+        // ...
+        
+        for (const { preset, pass } of presets) {
+          if (!preset) return true;
+
+          const ignored = yield* recurseDescriptors(
+            {
+              plugins: preset.plugins,
+              presets: preset.presets,
+            },
+            pass,
+          );
+          // ...
+        }
+      }
+
+      // resolve plugins
+      if (plugins.length > 0) {
+        pass.unshift(...plugins);
+      }
+    })
+```
+
+`loadPrivatePartialConfig`中会依次执行我们定义的plugins以及presets，这也是为什么在上面的例子中preset1会打印在preset2。
+
+```javascript
+// babel/packages/babel-core/src/config/config-chain.js [line 629]
+
+function mergeChainOpts(
+  target: ConfigChain,
+  { options, plugins, presets }: OptionsAndDescriptors,
+): ConfigChain {
+  target.options.push(options);
+  target.plugins.push(...plugins());
+  target.presets.push(...presets());
+
+  return target;
+}
+```
+
+`recurseDescriptors`这里是一个递归函数，是用来在passes中存放解析过后的plugins以及presets的，passes通过unshift的方式解析每次循环之后的插件，因此presets的循环越靠后，在passes中的plugins反而会越靠前，这也是为什么presets列表中的执行顺序是逆序的原因。
+
+```javascript
+// babel/packages/babel-core/src/config/full.js [line 195]
+
+opts.plugins = passes[0];
+opts.presets = passes
+  .slice(1)
+  .filter(plugins => plugins.length > 0)
+  .map(plugins => ({ plugins }));
+opts.passPerPreset = opts.presets.length > 0;
+
+return {
+  options: opts,
+  passes: passes,
+};
+```
+
+设置解析后的`plugins`，然后返回新的config。
 
 ## 参考链接
 

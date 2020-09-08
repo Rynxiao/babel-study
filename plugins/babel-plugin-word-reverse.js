@@ -1,8 +1,8 @@
 module.exports = function() {
-  console.log("word-reverse plugin will be executed firstly");
   return {
     visitor: {
       Identifier(path) {
+        console.log("word-reverse plugin come in!!!");
         const name = path.node.name;
         path.node.name = name
         .split("")
