@@ -792,7 +792,7 @@ console.log(arr[Symbol.iterator]());
 
 下面来试试开启了`corejs`选项之后生成的文件是啥样的？
 
-![image-20200913164201611](/Users/yhhu/Documents/coding/babel-study/screenshots/transform-runtime-3.png)
+![transform-runtime-3](./screenshots/transform-runtime-3.png)
 
 可以看到所有的工具方式都来自于`@babel/runtime-corejs2`，因为是独立于polyfill生成的，所以不会污染全局环境。
 
