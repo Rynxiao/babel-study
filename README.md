@@ -86,7 +86,7 @@ arrayFn('I', 'am', 'using');
 
 执行以下命令：`npx babel ./cli/index.js --out-file ./cli/index.t.js`，结果如下图：
 
-![image-20200906173500404](./screenshots/babel-cli-1.png)
+![babel-cli-1](./screenshots/babel-cli-1.png)
 
 代码和源代码竟然是一模一样的，为什么箭头函数没有进行转换呢？这里就会引入[plugins](https://babeljs.io/docs/en/plugins)以及[preset](https://babeljs.io/docs/en/presets)的概念，这里暂时不会具体讲解，只需要暂时知道，代码的转换需要使用plugin进行。
 
@@ -99,7 +99,7 @@ npx babel ./cli/index.js --out-file ./cli/index.t.js --plugins=@babel/plugin-tra
 
 执行完之后，再看生成的文件
 
-![image-20200906174958668](./screenshots/babel-cli-2.png)
+![babel-cli-2](./screenshots/babel-cli-2.png)
 
 ### 2.3 使用webpack babel-loader来进行转换
 
@@ -138,7 +138,7 @@ npx webpack
 
 可以得到转换之后的代码如下：
 
-![image-20200906181714368](./screenshots/webpack-1.png)
+![webpack-1](./screenshots/webpack-1.png)
 
 可以对比查看babel-cli的转换之后的代码是一致的。
 
@@ -408,10 +408,10 @@ npx babel ./plugins/index.js -o ./plugins/index.t.js
 // presets/babel-plugin-word-replace.js
 // 这个插件主要的功能是给每个节点类型为Identifier的名称拼接一个_replace的后缀
 module.exports = function() {
-  console.log("word-replace plugin will be executed firstly");
   return {
     visitor: {
       Identifier(path) {
+        console.log("word-replace plugin come in!!!");
         let name = path.node.name;
         path.node.name = name += '_replace';
       },
@@ -595,6 +595,124 @@ return {
 ```
 
 设置解析后的`plugins`，然后返回新的config。
+
+## 5. polyfill
+
+>Babel 7.4.0之后，`@babel/polyfill`这个包已经废弃了，推荐直接是用`core-js/stable`以及`regenerator-runtime/runtime`
+>
+>```javascript
+>import "core-js/stable";
+>import "regenerator-runtime/runtime";
+>```
+
+`polyfill`的直接翻译为垫片，是为了添加一些比较老的浏览器或者环境中不支持的新特性。比如`Promise/ WeakMap`，又或者一些函数`Array.form/Object.assign`，以及一些实例方法`Array.prototype.includes`等等。
+
+注意：**这些新的特性会直接加载全局的环境上，在使用时请注意是否会污染当前的全局作用域**
+
+### 5.1 基本使用
+
+```javascript
+npm install --save @babel/polyfill
+
+// commonJs
+require('@babel/polyfill')
+
+// es6
+import('@babel/polyfill')
+```
+
+当在webpack中使用时，官方推荐和`@babel/preset-env`一起使用，因为这个preset会根据当前配置的浏览器环境自动加载相应的polyfill，而不是全部进行加载，从而达到减小打包体积的目的
+
+```json
+// .bablerc
+{
+  "presets": [
+    [
+      "@babel/preset-env", {
+        "useBuiltIns": "usage", // 'entry/false'
+        "corejs": 3
+      }
+    ]
+  ]
+}
+```
+
+`useBuiltIns`有三个选项
+
+- **usage** 当使用此选项时，只需要安装`@babel-polyfill`即可，不需要在webpack中引入，也不需要在入口文件中引入(require/import)
+
+- **entry** 当使用此选项时，安装完`@babel-polyfill`之后，然后在项目的入口文件中引入
+
+- **false** 当使用此选项时，需要安装依赖包，然后加入webpack.config.js的entry中
+
+  ```javascript
+  module.exports = {
+    entry: ["@babel/polyfill", "./app/js"],
+  };
+  ```
+
+在浏览器中使用，可以直接引入`@bable/polyfill`中的`dist/polyfill.js`
+
+```html
+<script src='dist/polyfill.js'></script>
+```
+
+### 5.2 示例
+
+通过配合使用`@babel/preset-env`之后，我们可以来看看编译之后生成了什么？
+
+```javascript
+// polyfill/.babelrc
+{
+  "presets": [
+    [
+      "@babel/preset-env", {
+        "useBuiltIns": "usage", 	// 其他两个选项 'entry/false'
+        "corejs": 3 							// 如果需要使用includes，需要安装corejs@3版本
+      }
+    ]
+  ]
+}
+
+// polyfill/index.js
+const sym = Symbol();
+
+const promise = Promise.resolve();
+
+const arr = ["arr", "yeah!"];
+const check = arr.includes("yeah!");
+
+console.log(arr[Symbol.iterator]());
+```
+
+编译之后的结果如下
+
+![polyfill-1](./screenshots/polyfill-1.png)
+
+可以看到，浏览器中缺失的方法、对象都是直接引入的。当你只需要在特定的浏览器中做兼容时，可以显式地声明，使用方式可以参照[browserslist-compatible](https://github.com/ai/browserslist)。
+
+```json
+{
+  "targets": "> 0.25%, not dead"，
+  
+  // 或者指明特定版本
+  "targets": {
+    "chrome": "58",
+    "ie": "11"
+  }
+}
+```
+
+## 6. transform-runtime
+
+> A plugin that enables the re-use of Babel's injected helper code to save on codesize.
+
+`@babel/plugin-transform-runtime`的主要有两个用处
+
+- 提取一些babel中的工具函数来达到减小打包体积的作用
+- 建立一个沙箱环境，避免和全局引入的polyfill产生冲突
+
+
 
 ## 参考链接
 
