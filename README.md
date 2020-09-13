@@ -709,7 +709,7 @@ console.log(arr[Symbol.iterator]());
 
 > A plugin that enables the re-use of Babel's injected helper code to save on codesize.
 
-`@babel/plugin-transform-runtime`的主要有两个用处
+`@babel/plugin-transform-runtime`的主要有三个用处
 
 - 自动引入`@babel/runtime/regenerator`，当你使用了`generator/async`函数(通过`regenerator`选项打开，默认为true)
 - 提取一些babel中的工具函数来达到减小打包体积的作用
