@@ -1,5 +1,7 @@
 ## 1. 什么是babel
 
+本文基于的babel版本是7.11.6，本文所有示例[github](https://github.com/Rynxiao/babel-study)
+
 > Babel is a toolchain that is mainly used to convert ECMAScript 2015+ code into a backwards compatible version of JavaScript in current and older browsers or environments. 
 >
 > Babel是一个工具链，主要用于将ECMAScript 2015+代码转换为当前和较老的浏览器或环境中的向后兼容的JavaScript版本。
@@ -709,10 +711,97 @@ console.log(arr[Symbol.iterator]());
 
 `@babel/plugin-transform-runtime`的主要有两个用处
 
+- 自动引入`@babel/runtime/regenerator`，当你使用了`generator/async`函数(通过`regenerator`选项打开，默认为true)
 - 提取一些babel中的工具函数来达到减小打包体积的作用
-- 建立一个沙箱环境，避免和全局引入的polyfill产生冲突
+- 如果开启了`corejs`选项(默认为false)，会自动建立一个沙箱环境，避免和全局引入的polyfill产生冲突。
 
+这里说一下第三点，当开发自己的类库时，建议开启corejs选项，因为你使用的polyfill可能会和用户期待的产生冲突。一个简单的比喻，你开发的类库是希望兼容ie11的，但是用户的系统是主要基于chorme的，根本就不要去兼容ie11的一些功能，如果交给用户去polyfill，那就的要求用户也必须要兼容ie11，这样就会引入额外的代码来支持程序的运行，这往往是用户不想看到的。
 
+### 6.1 基本使用
+
+```javascript
+// dev dependence
+npm install --save-dev @babel/plugin-transform-runtime
+
+// production dependence
+// 因为我们需要在生产环境中使用一些runtime的helpers
+npm install --save @babel/runtime
+
+// .babelrc
+// 默认配置
+{
+  "plugins": [
+    [
+      "@babel/plugin-transform-runtime",
+      {
+        "absoluteRuntime": false,
+        "corejs": false,
+        "helpers": true,
+        "regenerator": true,
+        "useESModules": false,
+        "version": "7.0.0-beta.0"
+      }
+    ]
+  ]
+}
+```
+
+### 6.2 示例
+
+说了这么多，下面来看一个示例
+
+```json
+// transform-runtime/.babelrc
+{
+  "presets": ["@babel/preset-env"],
+  "plugins": [
+    [
+      "@babel/plugin-transform-runtime",
+      {
+        "helpers": false
+      }
+    ]
+  ]
+}
+
+// transform-runtime/index.js
+const sym = Symbol();
+
+const promise = Promise.resolve();
+
+const arr = ["arr", "yeah!"];
+const check = arr.includes("yeah!");
+
+class Person {}
+
+new Person();
+
+console.log(arr[Symbol.iterator]());
+
+```
+
+这里暂时关闭了`helpers`，我们来看看编译之后会是什么结果
+
+![transform-runtime-1](./screenshots/transform-runtime-1.png)
+
+可以看到，编译之后，将`Person class`生成了一个函数`_classCallCheck`，你可能觉得一个生成这样的函数也没什么特别大的关系，但是如果在多个文件中都声明了`class`，那就意味着，将会在多个文件中生成一个这么一模一样的工具函数，那么体积就会变大了。因此，开启了`helpers`之后，效果又是怎样的呢？
+
+![transform-runtime-2](./screenshots/transform-runtime-2.png)
+
+可以看到，需要生成的方法变成了引入的方式，注意引入的库是`@babel-runtime`
+
+下面来试试开启了`corejs`选项之后生成的文件是啥样的？
+
+![image-20200913164201611](/Users/yhhu/Documents/coding/babel-study/screenshots/transform-runtime-3.png)
+
+可以看到所有的工具方式都来自于`@babel/runtime-corejs2`，因为是独立于polyfill生成的，所以不会污染全局环境。
+
+## 总结
+
+- 推荐使用babel.config.js来作为整个项目的babel配置，.babelrc更加使用与`monorepo`项目
+- babel的编译基本都是依赖于plugin，preset是一组plugin的集合
+- polyfill为一些较老的浏览器提供一些新特性的支持
+- transform-runtime可以提取一些帮助函数来减小打包的体积，在开发自己的类库是，建议开启corejs选项
 
 ## 参考链接
 
